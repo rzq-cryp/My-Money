@@ -6,7 +6,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 // Pastikan URL valid dan bertipe HTTP/HTTPS
 const validUrl = supabaseUrl && supabaseUrl.startsWith('http') 
   ? supabaseUrl 
-  : 'https://placeholder.supabase.co';
+  : 'https://xrfbmkaizayfeiqyeiwj.supabase.co/rest/v1/';
 
 const validKey = supabaseAnonKey || 'placeholder';
 
