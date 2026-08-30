@@ -8,9 +8,18 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'SmartMoney PWA',
-  description: 'Pencatatan Keuangan Pribadi',
+  title: 'SmartMoney',
+  description: 'Aplikasi Catatan Keuangan Pribadi',
   manifest: '/manifest.json',
+  themeColor: '#2563eb',
+  icons: {
+    icon: [
+      { url: '/icon.png', type: 'image/png' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    shortcut: '/icon.png',
+    apple: '/icon.png', // Logo untuk iOS / iPhone Home Screen
+  },
 };
 
 export default function RootLayout({
@@ -20,14 +29,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body className={`${inter.className} bg-slate-900 text-slate-800 antialiased min-h-screen flex justify-center items-center`}>
-        {/* Container Simulasi Frame HP untuk Layar Laptop/Desktop */}
-        <div className="w-full max-w-md bg-gray-50 min-h-screen shadow-2xl relative overflow-hidden flex flex-col border-x border-slate-800">
-          <main className="flex-1 overflow-y-auto">
-            {children}
-          </main>
-        </div>
-      </body>
+      <head>
+        <link rel="apple-touch-icon" href="/icon.png" />
+      </head>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
