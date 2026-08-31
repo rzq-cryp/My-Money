@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../Lib/Supabase';
 import { Wallet, CreditCard, Banknote, Plus, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import BottomNav from '@/components/BottomNav';
 
 interface Account {
   id: string;
@@ -94,7 +95,7 @@ export default function WalletsPage() {
           Rp {totalBalance.toLocaleString('id-ID')}
         </h2>
         <p className="text-xs text-blue-200 mt-2">
-          Gabungan dari {accounts.length} rekening / wallet active
+          Gabungan dari {accounts.length} rekening / wallet aktif
         </p>
       </div>
 
@@ -168,6 +169,9 @@ export default function WalletsPage() {
           ))}
         </div>
       )}
+
+      {/* Navbar Bawah */}
+      <BottomNav />
     </main>
   );
 }
