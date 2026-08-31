@@ -7,7 +7,7 @@ import BottomNav from '@/components/BottomNav';
 
 export default function AddTransactionPage() {
   const router = useRouter();
-  
+
   // State Nominal & Formatting
   const [displayAmount, setDisplayAmount] = useState('');
   const [rawAmount, setRawAmount] = useState<number>(0);
@@ -29,7 +29,10 @@ export default function AddTransactionPage() {
 
   const fetchOptions = async () => {
     const { data: accData } = await supabase.from('accounts').select('*');
-    const { data: catData } = await supabase.from('categories').select('*').eq('type', type);
+    const { data: catData } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('type', type);
 
     if (accData && accData.length > 0) {
       setAccounts(accData);
@@ -58,25 +61,38 @@ export default function AddTransactionPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rawAmount || !accountId) return;
+    
+    // Perbaikan 1: Gunakan rawAmount menggantikan variabel 'amount' yang hilang
+    if (!rawAmount || rawAmount <= 0 || !accountId || !categoryId) {
+      alert('Mohon lengkapi nominal dan pilihan wallet/kategori!');
+      return;
+    }
 
     setLoading(true);
+
+    // Perbaikan 2: Gabungkan tanggal yang dipilih user dengan jam saat ini agar presisi WIB
+    const now = new Date();
+    const formattedDate = new Date(
+      `${transactionDate}T${now.toTimeString().split(' ')[0]}`
+    ).toISOString();
+
     const { error } = await supabase.from('transactions').insert([
       {
-        amount: rawAmount,
-        type,
-        description,
         account_id: accountId,
-        category_id: categoryId || null,
-        transaction_date: new Date(transactionDate).toISOString(),
+        category_id: categoryId,
+        amount: rawAmount,
+        type: type,
+        description: description,
+        transaction_date: formattedDate,
       },
     ]);
 
     setLoading(false);
-    if (!error) {
-      router.push('/');
-    } else {
+
+    if (error) {
       alert('Gagal menyimpan transaksi: ' + error.message);
+    } else {
+      router.push('/');
     }
   };
 
@@ -91,7 +107,9 @@ export default function AddTransactionPage() {
             type="button"
             onClick={() => setType('expense')}
             className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
-              type === 'expense' ? 'bg-red-500 text-white shadow' : 'text-gray-600'
+              type === 'expense'
+                ? 'bg-red-500 text-white shadow'
+                : 'text-gray-600'
             }`}
           >
             Pengeluaran
@@ -100,7 +118,9 @@ export default function AddTransactionPage() {
             type="button"
             onClick={() => setType('income')}
             className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
-              type === 'income' ? 'bg-green-500 text-white shadow' : 'text-gray-600'
+              type === 'income'
+                ? 'bg-green-500 text-white shadow'
+                : 'text-gray-600'
             }`}
           >
             Pemasukan
@@ -109,9 +129,13 @@ export default function AddTransactionPage() {
 
         {/* Nominal Formatted Input */}
         <div>
-          <label className="text-xs text-gray-500 font-medium">Nominal Transaksi</label>
+          <label className="text-xs text-gray-500 font-medium">
+            Nominal Transaksi
+          </label>
           <div className="relative flex items-center mt-1">
-            <span className="absolute left-3 text-xl font-bold text-gray-400">Rp</span>
+            <span className="absolute left-3 text-xl font-bold text-gray-400">
+              Rp
+            </span>
             <input
               type="text"
               inputMode="numeric"
@@ -126,7 +150,9 @@ export default function AddTransactionPage() {
 
         {/* Sumber Wallet / Akun */}
         <div>
-          <label className="text-xs text-gray-500 font-medium">Sumber Akun / Wallet</label>
+          <label className="text-xs text-gray-500 font-medium">
+            Sumber Akun / Wallet
+          </label>
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
@@ -148,6 +174,7 @@ export default function AddTransactionPage() {
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
             className="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
           >
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>
@@ -159,7 +186,9 @@ export default function AddTransactionPage() {
 
         {/* Keterangan */}
         <div>
-          <label className="text-xs text-gray-500 font-medium">Keterangan / Catatan</label>
+          <label className="text-xs text-gray-500 font-medium">
+            Keterangan / Catatan
+          </label>
           <input
             type="text"
             placeholder="contoh: Kopi Kenangan / Nasi Goreng"
@@ -171,7 +200,9 @@ export default function AddTransactionPage() {
 
         {/* Tanggal Transaksi */}
         <div>
-          <label className="text-xs text-gray-500 font-medium">Tanggal Transaksi</label>
+          <label className="text-xs text-gray-500 font-medium">
+            Tanggal Transaksi
+          </label>
           <input
             type="date"
             value={transactionDate}
