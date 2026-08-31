@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../../Lib/Supabase';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
