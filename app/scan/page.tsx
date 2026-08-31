@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '../../Lib/Supabase';
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
@@ -30,21 +30,55 @@ export default function ScanPage() {
     }
   };
 
+  // 🖼️ Fungsi Kompresi Gambar agar ukuran di bawah 1MB
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1024; // Batas lebar gambar 1024px
+          const scaleSize = MAX_WIDTH / img.width;
+          
+          if (img.width > MAX_WIDTH) {
+            canvas.width = MAX_WIDTH;
+            canvas.height = img.height * scaleSize;
+          } else {
+            canvas.width = img.width;
+            canvas.height = img.height;
+          }
+
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          // Kompresi ke format JPEG kualitas 70%
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64String = reader.result as string;
-      setPreview(base64String);
-      await processImage(base64String);
-    };
-    reader.readAsDataURL(file);
+    try {
+      setLoading(true);
+      // Kompresi gambar terlebih dahulu
+      const compressedBase64 = await compressImage(file);
+      setPreview(compressedBase64);
+      await processImage(compressedBase64);
+    } catch (err) {
+      alert('Gagal memproses file gambar');
+      setLoading(false);
+    }
   };
 
   const processImage = async (base64Image: string) => {
-    setLoading(true);
     try {
       const res = await fetch('/api/scan-receipt', {
         method: 'POST',
@@ -93,7 +127,7 @@ export default function ScanPage() {
 
   return (
     <div className="p-4 max-w-md mx-auto pb-24 min-h-screen bg-gray-50">
-      <h1 className="text-xl font-bold mb-4 text-gray-800">Scan Struk Belanja (AI)</h1>
+      <h1 className="text-xl font-bold mb-4 text-gray-800">Scan Struk Belanja & M-Banking (AI)</h1>
 
       {/* Upload Box */}
       <div className="bg-white p-6 border-2 border-dashed border-gray-300 rounded-2xl text-center mb-6">
@@ -102,11 +136,10 @@ export default function ScanPage() {
         ) : (
           <div className="py-6 flex flex-col items-center">
             <Camera className="w-12 h-12 text-gray-400 mb-2" />
-            <p className="text-xs text-gray-500">Pilih metode pengambilan foto struk</p>
+            <p className="text-xs text-gray-500">Pilih metode pengambilan foto / screenshot</p>
           </div>
         )}
 
-        {/* 2 Tombol Terpisah: Kamera & Galeri */}
         <div className="grid grid-cols-2 gap-3 mt-2">
           {/* Input Kamera */}
           <label className="bg-blue-600 text-white text-xs font-semibold py-2.5 px-3 rounded-xl cursor-pointer hover:bg-blue-700 transition flex items-center justify-center gap-1.5 shadow-sm">
@@ -122,7 +155,7 @@ export default function ScanPage() {
             />
           </label>
 
-          {/* Input Galeri / File */}
+          {/* Input Galeri */}
           <label className="bg-slate-100 text-gray-700 border border-gray-200 text-xs font-semibold py-2.5 px-3 rounded-xl cursor-pointer hover:bg-slate-200 transition flex items-center justify-center gap-1.5 shadow-sm">
             <ImageIcon className="w-4 h-4 text-slate-600" />
             <span>Dari Galeri</span>
@@ -140,7 +173,7 @@ export default function ScanPage() {
       {/* Result Form */}
       {loading && (
         <div className="flex items-center justify-center gap-2 py-4 text-sm text-blue-600 font-medium">
-          <Loader2 className="w-5 h-5 animate-spin" /> Gemini AI sedang menganalisis struk...
+          <Loader2 className="w-5 h-5 animate-spin" /> Gemini AI sedang menganalisis gambar...
         </div>
       )}
 
@@ -165,7 +198,7 @@ export default function ScanPage() {
           </div>
 
           <div>
-            <label className="text-xs text-gray-500">Nama Merchant / Toko</label>
+            <label className="text-xs text-gray-500">Nama Merchant / Penerima / Layanan</label>
             <input
               type="text"
               value={description}
@@ -175,7 +208,7 @@ export default function ScanPage() {
           </div>
 
           <div>
-            <label className="text-xs text-gray-500">Total Pengeluaran (Rp)</label>
+            <label className="text-xs text-gray-500">Total Nominal (Rp)</label>
             <input
               type="number"
               value={amount}
