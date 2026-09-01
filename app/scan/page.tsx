@@ -15,22 +15,29 @@ export default function ScanPage() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [accountId, setAccountId] = useState('');
+  const [categoryId, setCategoryId] = useState(''); // State Kategori Tambahan
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]); // List Kategori
   const [isScanned, setIsScanned] = useState(false);
 
   useEffect(() => {
-    fetchAccounts();
+    fetchOptions();
   }, []);
 
-  const fetchAccounts = async () => {
-    const { data } = await supabase.from('accounts').select('*');
-    if (data && data.length > 0) {
-      setAccounts(data);
-      setAccountId(data[0].id);
+  const fetchOptions = async () => {
+    const { data: accData } = await supabase.from('accounts').select('*');
+    if (accData && accData.length > 0) {
+      setAccounts(accData);
+      setAccountId(accData[0].id);
+    }
+
+    const { data: catData } = await supabase.from('categories').select('*').eq('type', 'expense');
+    if (catData) {
+      setCategories(catData);
+      if (catData.length > 0) setCategoryId(catData[0].id);
     }
   };
 
-  // 🖼️ Fungsi Kompresi Gambar agar ukuran di bawah 1MB
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -40,25 +47,16 @@ export default function ScanPage() {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 1024; // Batas lebar gambar 1024px
+          const MAX_WIDTH = 1024;
           const scaleSize = MAX_WIDTH / img.width;
-          
-          if (img.width > MAX_WIDTH) {
-            canvas.width = MAX_WIDTH;
-            canvas.height = img.height * scaleSize;
-          } else {
-            canvas.width = img.width;
-            canvas.height = img.height;
-          }
+          canvas.width = img.width > MAX_WIDTH ? MAX_WIDTH : img.width;
+          canvas.height = img.width > MAX_WIDTH ? img.height * scaleSize : img.height;
 
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          // Kompresi ke format JPEG kualitas 70%
           resolve(canvas.toDataURL('image/jpeg', 0.7));
         };
-        img.onerror = (err) => reject(err);
       };
-      reader.onerror = (err) => reject(err);
     });
   };
 
@@ -68,12 +66,11 @@ export default function ScanPage() {
 
     try {
       setLoading(true);
-      // Kompresi gambar terlebih dahulu
       const compressedBase64 = await compressImage(file);
       setPreview(compressedBase64);
       await processImage(compressedBase64);
     } catch (err) {
-      alert('Gagal memproses file gambar');
+      alert('Gagal memproses gambar');
       setLoading(false);
     }
   };
@@ -90,6 +87,9 @@ export default function ScanPage() {
       if (result.success) {
         setAmount(result.data.total_amount);
         setDescription(result.data.store_name);
+        if (result.data.category_id) {
+          setCategoryId(result.data.category_id); // Otomatis pilih kategori rekomendasi AI
+        }
         setIsScanned(true);
       } else {
         alert('Gagal membaca struk: ' + result.error);
@@ -103,13 +103,14 @@ export default function ScanPage() {
 
   const handleSave = async () => {
     if (!amount || !accountId) {
-      alert('Mohon pilih wallet dan pastikan nominal terisi!');
+      alert('Mohon pilih wallet dan isi nominal!');
       return;
     }
 
     const { error } = await supabase.from('transactions').insert([
       {
         account_id: accountId,
+        category_id: categoryId || null, // Sertakan Category ID
         amount: parseFloat(amount),
         type: 'expense',
         description,
@@ -127,7 +128,7 @@ export default function ScanPage() {
 
   return (
     <div className="p-4 max-w-md mx-auto pb-24 min-h-screen bg-gray-50">
-      <h1 className="text-xl font-bold mb-4 text-gray-800">Scan Struk Belanja & M-Banking (AI)</h1>
+      <h1 className="text-xl font-bold mb-4 text-gray-800">Scan Struk (Auto Categorize)</h1>
 
       {/* Upload Box */}
       <div className="bg-white p-6 border-2 border-dashed border-gray-300 rounded-2xl text-center mb-6">
@@ -136,58 +137,40 @@ export default function ScanPage() {
         ) : (
           <div className="py-6 flex flex-col items-center">
             <Camera className="w-12 h-12 text-gray-400 mb-2" />
-            <p className="text-xs text-gray-500">Pilih metode pengambilan foto / screenshot</p>
+            <p className="text-xs text-gray-500">Pilih metode pengambilan foto struk</p>
           </div>
         )}
 
         <div className="grid grid-cols-2 gap-3 mt-2">
-          {/* Input Kamera */}
           <label className="bg-blue-600 text-white text-xs font-semibold py-2.5 px-3 rounded-xl cursor-pointer hover:bg-blue-700 transition flex items-center justify-center gap-1.5 shadow-sm">
             <Camera className="w-4 h-4" />
             <span>Kamera HP</span>
-            <input 
-              type="file" 
-              accept="image/*" 
-              capture="environment" 
-              onChange={handleFileChange} 
-              className="hidden" 
-              disabled={loading} 
-            />
+            <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" disabled={loading} />
           </label>
-
-          {/* Input Galeri */}
           <label className="bg-slate-100 text-gray-700 border border-gray-200 text-xs font-semibold py-2.5 px-3 rounded-xl cursor-pointer hover:bg-slate-200 transition flex items-center justify-center gap-1.5 shadow-sm">
             <ImageIcon className="w-4 h-4 text-slate-600" />
             <span>Dari Galeri</span>
-            <input 
-              type="file" 
-              accept="image/*" 
-              onChange={handleFileChange} 
-              className="hidden" 
-              disabled={loading} 
-            />
+            <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" disabled={loading} />
           </label>
         </div>
       </div>
 
-      {/* Result Form */}
       {loading && (
         <div className="flex items-center justify-center gap-2 py-4 text-sm text-blue-600 font-medium">
-          <Loader2 className="w-5 h-5 animate-spin" /> Gemini AI sedang menganalisis gambar...
+          <Loader2 className="w-5 h-5 animate-spin" /> menganalisis nominal & kategori...
         </div>
       )}
 
       {isScanned && (
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm space-y-3">
-          <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Hasil Ekstraksi AI</p>
+          <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Hasil AI Auto-Categorize</p>
 
           <div>
-            <label className="text-xs text-gray-500 font-medium">Potong dari Wallet / Rekening</label>
+            <label className="text-xs text-gray-500 font-medium">Potong dari Wallet</label>
             <select
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
               className="w-full p-2 border border-gray-200 rounded-lg text-sm text-gray-800 bg-white mt-1"
-              required
             >
               {accounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -197,8 +180,24 @@ export default function ScanPage() {
             </select>
           </div>
 
+          {/* Selector Kategori yang dipilih Otomatis oleh AI */}
           <div>
-            <label className="text-xs text-gray-500">Nama Merchant / Penerima / Layanan</label>
+            <label className="text-xs text-gray-500 font-medium">Kategori Transaksi (Rekomendasi AI)</label>
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="w-full p-2 border border-gray-200 rounded-lg text-sm font-semibold text-blue-700 bg-blue-50 mt-1"
+            >
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500">Nama Merchant / Toko</label>
             <input
               type="text"
               value={description}
@@ -208,7 +207,7 @@ export default function ScanPage() {
           </div>
 
           <div>
-            <label className="text-xs text-gray-500">Total Nominal (Rp)</label>
+            <label className="text-xs text-gray-500">Total Pengeluaran (Rp)</label>
             <input
               type="number"
               value={amount}

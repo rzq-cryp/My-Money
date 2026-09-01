@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '../../../Lib/Supabase';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -15,37 +16,73 @@ export async function POST(request: Request) {
       );
     }
 
+    // 1. Ambil daftar kategori pengeluaran dari Supabase
+    const { data: categories } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('type', 'expense');
+
+    const categoryOptions = categories 
+      ? categories.map(c => `ID: "${c.id}" (Nama: "${c.name}")`).join(', ')
+      : '';
+
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
 
-    // Gunakan 'gemini-2.5-flash' atau 'gemini-1.5-flash-latest'
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    // 2. Prompt dengan instruksi otomatisasi kategori
+    const prompt = `Anda adalah sistem AI analisis keuangan. Ekstrak data dari struk/m-banking ini dan tentukan kategorinya.
 
-    const prompt = `Analisis gambar ini (bisa berupa foto struk belanja toko fisik ATAU screenshot bukti transfer/pembayaran m-banking/e-wallet).
-Ekstrak data dalam format JSON murni tanpa markdown/backticks:
+Daftar Kategori yang Tersedia:
+[${categoryOptions}]
+
+Ekstrak informasi dalam format JSON murni:
 {
-  "total_amount": "ambil nominal utama transaksi/transfer yang dibayarkan atau ditransfer (hanya angka murni, contoh: 50000. Jangan ambil nomor rekening, nomor referensi, atau saldo akhir)",
-  "store_name": "nama toko, nama penerima transfer, atau nama layanan m-banking/e-wallet (contoh: 'Transfer ke Budi' atau 'BCA Mobile' atau 'Indomaret')"
+  "total_amount": "Nominal akhir/TOTAL BELANJA (hanya angka murni, contoh: 36200. Abaikan angka Tunai/Kembalian)",
+  "store_name": "Nama toko / penerima transfer",
+  "category_id": "Pilih SATU 'id' kategori yang paling cocok dari Daftar Kategori di atas berdasarkan barang/toko tersebut. Jika ragu, pilih yang paling mendekati."
 }`;
 
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          data: base64Data,
-          mimeType: 'image/jpeg',
-        },
-      },
-    ]);
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    let textResponse = '';
+    let lastError = null;
 
-    const textResponse = result.response.text();
+    for (const modelName of modelsToTry) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          },
+        });
+
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: 'image/jpeg',
+            },
+          },
+        ]);
+
+        textResponse = result.response.text();
+        if (textResponse) break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!textResponse) throw lastError || new Error('Gagal memproses AI');
+
     const cleanedJsonText = textResponse.replace(/```json|```/g, '').trim();
     const parsedData = JSON.parse(cleanedJsonText);
 
     return NextResponse.json({
       success: true,
       data: {
-        total_amount: parsedData.total_amount.toString().replace(/\D/g, ''),
-        store_name: parsedData.store_name || 'Toko / Minimarket',
+        total_amount: parsedData.total_amount ? parsedData.total_amount.toString().replace(/\D/g, '') : '',
+        store_name: parsedData.store_name || 'Toko / Merchant',
+        category_id: parsedData.category_id || '',
       },
     });
 
