@@ -88,8 +88,121 @@ export default function WalletsPage() {
     setIsUpdating(false);
   };
 
-  const getIcon = (type: string) => {
-    switch (type.toLowerCase()) {
+  // 🏦 Fungsi Deteksi Logo Resmi Bank / E-Wallet (Fixed CDN)
+  const getWalletLogo = (accountName: string, accountType: string) => {
+    const name = accountName.toLowerCase();
+
+    if (name.includes('bca')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/5/5c/Bank_Central_Asia.svg"
+          alt="BCA"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('mandiri')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/a/ad/Bank_Mandiri_logo_2016.svg"
+          alt="Mandiri"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('bri')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/2/2e/BRI_2020.svg"
+          alt="BRI"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('bni')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/5/55/BNI_logo.svg"
+          alt="BNI"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('btn')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/f/fd/BTN_2024.svg"
+          alt="BTN"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('jago')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Bank_Jago_logo.svg"
+          alt="Bank Jago"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('seabank')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/e/eb/SeaBank_logo.svg"
+          alt="SeaBank"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('gopay')) {
+      return (
+        <img
+          src="https://images.ctfassets.net/9t2h3n3y2fep/4QzF9dCWWtV4F14mDFAwzE/bfd1fbc8f5bbfb13f173bd5881cfdbbc/GoPay_Logo.png"
+          alt="GoPay"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('ovo')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/e/eb/Logo_ovo_purple.svg"
+          alt="OVO"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('dana')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/7/72/Logo_dana_blue.svg"
+          alt="DANA"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('shopee') || name.includes('spay')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/f/fe/Shopee.svg"
+          alt="ShopeePay"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+    if (name.includes('linkaja')) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/8/85/LinkAja.svg"
+          alt="LinkAja"
+          className="w-6 h-6 object-contain"
+        />
+      );
+    }
+
+    // Fallback Icon Default
+    switch (accountType.toLowerCase()) {
       case 'bank':
         return <CreditCard className="w-6 h-6 text-blue-500" />;
       case 'ewallet':
@@ -116,7 +229,7 @@ export default function WalletsPage() {
         <form onSubmit={handleAddAccount} className="space-y-3">
           <input
             type="text"
-            placeholder="Nama Wallet (contoh: BCA / Gopay)"
+            placeholder="Nama Wallet (contoh: BCA / Gopay / BTN)"
             value={accountName}
             onChange={(e) => setAccountName(e.target.value)}
             className="w-full p-2.5 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -165,8 +278,8 @@ export default function WalletsPage() {
               className="bg-white p-4 rounded-xl border shadow-sm flex items-center justify-between"
             >
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-gray-100 rounded-xl">
-                  {getIcon(acc.account_type)}
+                <div className="p-2.5 bg-gray-100 rounded-xl flex items-center justify-center w-11 h-11">
+                  {getWalletLogo(acc.account_name, acc.account_type)}
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-800 text-sm">{acc.account_name}</h3>
