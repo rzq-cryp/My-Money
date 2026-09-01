@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '../../Lib/Supabase';
-import { Wallet, CreditCard, Banknote, Plus, ArrowLeft } from 'lucide-react';
+import { Wallet, CreditCard, Banknote, Plus, ArrowLeft, Pencil, X, Check } from 'lucide-react';
 import Link from 'next/link';
 import BottomNav from '@/components/BottomNav';
 
@@ -23,6 +23,11 @@ export default function WalletsPage() {
   const [balance, setBalance] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // State Modal Edit Saldo
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [newBalance, setNewBalance] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
   useEffect(() => {
     fetchAccounts();
   }, []);
@@ -39,9 +44,6 @@ export default function WalletsPage() {
     }
     setLoading(false);
   };
-
-  // 💰 Hitung Total Saldo Keseluruhan
-  const totalBalance = accounts.reduce((acc, curr) => acc + Number(curr.balance), 0);
 
   const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +68,26 @@ export default function WalletsPage() {
     setIsSubmitting(false);
   };
 
+  const handleUpdateBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccount || !newBalance) return;
+
+    setIsUpdating(true);
+    const { error } = await supabase
+      .from('accounts')
+      .update({ balance: parseFloat(newBalance) })
+      .eq('id', editingAccount.id);
+
+    if (error) {
+      alert('Gagal mengedit saldo: ' + error.message);
+    } else {
+      setEditingAccount(null);
+      setNewBalance('');
+      fetchAccounts();
+    }
+    setIsUpdating(false);
+  };
+
   const getIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case 'bank':
@@ -86,17 +108,6 @@ export default function WalletsPage() {
         </Link>
         <h1 className="text-xl font-bold text-gray-800">Daftar Rekening & Wallet</h1>
         <div className="w-6" />
-      </div>
-
-      {/* 💳 CARD TOTAL KEKAYAAN / TOTAL UANG */}
-      <div className="bg-linear-to-r from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg mb-6">
-        <p className="text-xs uppercase tracking-wider text-blue-100 font-medium">Total Kekayaan Anda</p>
-        <h2 className="text-3xl font-extrabold mt-1">
-          Rp {totalBalance.toLocaleString('id-ID')}
-        </h2>
-        <p className="text-xs text-blue-200 mt-2">
-          Gabungan dari {accounts.length} rekening / wallet aktif
-        </p>
       </div>
 
       {/* Form Tambah Wallet */}
@@ -162,15 +173,78 @@ export default function WalletsPage() {
                   <p className="text-xs text-gray-400 uppercase font-medium">{acc.account_type}</p>
                 </div>
               </div>
-              <p className="font-bold text-gray-800 text-sm">
-                Rp {Number(acc.balance).toLocaleString('id-ID')}
-              </p>
+
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-gray-800 text-sm">
+                  Rp {Number(acc.balance).toLocaleString('id-ID')}
+                </p>
+                <button
+                  onClick={() => {
+                    setEditingAccount(acc);
+                    setNewBalance(acc.balance.toString());
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                  title="Edit Saldo"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Navbar Bawah */}
+      {/* Modal Edit Saldo Popup */}
+      {editingAccount && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-800 text-base">
+                Edit Saldo {editingAccount.account_name}
+              </h3>
+              <button
+                onClick={() => setEditingAccount(null)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateBalance} className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 font-medium">Saldo Baru (Rp)</label>
+                <input
+                  type="number"
+                  value={newBalance}
+                  onChange={(e) => setNewBalance(e.target.value)}
+                  className="w-full p-3 border rounded-xl text-base font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none mt-1"
+                  placeholder="Masukkan nominal saldo baru"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingAccount(null)}
+                  className="flex-1 py-2.5 border text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdating}
+                  className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 flex items-center justify-center gap-1"
+                >
+                  <Check className="w-4 h-4" />
+                  {isUpdating ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <BottomNav />
     </main>
   );
