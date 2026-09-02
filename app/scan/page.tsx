@@ -4,20 +4,21 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../Lib/Supabase';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
-import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Camera, Image as ImageIcon, Clipboard, Loader2, ArrowLeft, Check } from 'lucide-react';
+import Link from 'next/link';
 
 export default function ScanPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
 
-  // Data Form dari AI
+  // Form State
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [accountId, setAccountId] = useState('');
-  const [categoryId, setCategoryId] = useState(''); // State Kategori Tambahan
+  const [categoryId, setCategoryId] = useState('');
   const [accounts, setAccounts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]); // List Kategori
+  const [categories, setCategories] = useState<any[]>([]);
   const [isScanned, setIsScanned] = useState(false);
 
   useEffect(() => {
@@ -39,7 +40,7 @@ export default function ScanPage() {
   };
 
   const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = (event) => {
@@ -75,27 +76,76 @@ export default function ScanPage() {
     }
   };
 
+  // 📋 Tempel Gambar dari Clipboard
+  const handlePasteFromClipboard = async () => {
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((type) => type.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            const base64 = reader.result as string;
+            setPreview(base64);
+            setLoading(true);
+            await processImage(base64);
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+      alert('Tidak ada gambar di clipboard! Salin/Copy foto resi terlebih dahulu.');
+    } catch (err) {
+      alert('Izin clipboard ditolak atau gunakan browser yang mendukung.');
+    }
+  };
+
   const processImage = async (base64Image: string) => {
     try {
+      setLoading(true);
       const res = await fetch('/api/scan-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64Image }),
+        body: JSON.stringify({ image: base64Image, imageBase64: base64Image }),
       });
+
       const result = await res.json();
 
-      if (result.success) {
-        setAmount(result.data.total_amount);
-        setDescription(result.data.store_name);
-        if (result.data.category_id) {
-          setCategoryId(result.data.category_id); // Otomatis pilih kategori rekomendasi AI
-        }
-        setIsScanned(true);
-      } else {
-        alert('Gagal membaca struk: ' + result.error);
+      if (!res.ok || result.error) {
+        throw new Error(result.error || 'Gagal membaca struk');
       }
-    } catch (err) {
-      alert('Terjadi kesalahan saat memproses gambar');
+
+      // 1. Deklarasi data hasil scan dari API
+      const data = result.data || result;
+
+      const extractedAmount = data.amount || data.total_amount || '';
+      const extractedMerchant = data.merchant || data.store_name || '';
+      const extractedCategory = data.category_id || data.category || '';
+
+      setAmount(extractedAmount.toString());
+      setDescription(extractedMerchant);
+
+      // 2. Otomatis set Wallet jika Gemini menemukan pasangan ID wallet
+      if (data.account_id) {
+        setAccountId(data.account_id);
+      }
+
+      // 3. Otomatis set Kategori
+      if (extractedCategory) {
+        const matchedCat = categories.find(
+          (c) =>
+            c.id === extractedCategory ||
+            c.name.toLowerCase().includes(String(extractedCategory).toLowerCase())
+        );
+        if (matchedCat) {
+          setCategoryId(matchedCat.id);
+        }
+      }
+
+      setIsScanned(true);
+    } catch (err: any) {
+      alert('Gagal membaca struk: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -110,10 +160,10 @@ export default function ScanPage() {
     const { error } = await supabase.from('transactions').insert([
       {
         account_id: accountId,
-        category_id: categoryId || null, // Sertakan Category ID
+        category_id: categoryId || null,
         amount: parseFloat(amount),
         type: 'expense',
-        description,
+        description: description || 'Scan Struk AI',
         transaction_date: new Date().toISOString(),
         is_automated: true,
       },
@@ -128,20 +178,27 @@ export default function ScanPage() {
 
   return (
     <div className="p-4 max-w-md mx-auto pb-24 min-h-screen bg-gray-50">
-      <h1 className="text-xl font-bold mb-4 text-gray-800">Scan Struk (Auto Categorize)</h1>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4 pt-2">
+        <Link href="/" className="p-2 hover:bg-gray-200 rounded-full transition">
+          <ArrowLeft className="w-5 h-5 text-gray-700" />
+        </Link>
+        <h1 className="text-lg font-bold text-gray-800">Scan Struk AI</h1>
+        <div className="w-5" />
+      </div>
 
-      {/* Upload Box */}
-      <div className="bg-white p-6 border-2 border-dashed border-gray-300 rounded-2xl text-center mb-6">
+      {/* Box Upload / Preview */}
+      <div className="bg-white p-5 border-2 border-dashed border-gray-300 rounded-2xl text-center mb-5 shadow-sm">
         {preview ? (
-          <img src={preview} alt="Struk" className="max-h-56 mx-auto rounded-lg mb-4 object-contain" />
+          <img src={preview} alt="Preview Struk" className="max-h-56 mx-auto rounded-xl mb-4 object-contain shadow-sm" />
         ) : (
           <div className="py-6 flex flex-col items-center">
-            <Camera className="w-12 h-12 text-gray-400 mb-2" />
-            <p className="text-xs text-gray-500">Pilih metode pengambilan foto struk</p>
+            <Camera className="w-10 h-10 text-gray-400 mb-2" />
+            <p className="text-xs text-gray-500 font-medium">Ambil atau Tempel Foto Struk Belanja</p>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 mt-2">
+        <div className="grid grid-cols-2 gap-2 mt-2">
           <label className="bg-blue-600 text-white text-xs font-semibold py-2.5 px-3 rounded-xl cursor-pointer hover:bg-blue-700 transition flex items-center justify-center gap-1.5 shadow-sm">
             <Camera className="w-4 h-4" />
             <span>Kamera HP</span>
@@ -149,28 +206,44 @@ export default function ScanPage() {
           </label>
           <label className="bg-slate-100 text-gray-700 border border-gray-200 text-xs font-semibold py-2.5 px-3 rounded-xl cursor-pointer hover:bg-slate-200 transition flex items-center justify-center gap-1.5 shadow-sm">
             <ImageIcon className="w-4 h-4 text-slate-600" />
-            <span>Dari Galeri</span>
+            <span>Galeri Foto</span>
             <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" disabled={loading} />
           </label>
         </div>
+
+        <button
+          type="button"
+          onClick={handlePasteFromClipboard}
+          disabled={loading}
+          className="w-full mt-2 bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold py-2.5 px-3 rounded-xl hover:bg-indigo-100 transition flex items-center justify-center gap-1.5 shadow-sm"
+        >
+          <Clipboard className="w-4 h-4 text-indigo-600" />
+          <span>Tempel Foto dari Clipboard</span>
+        </button>
       </div>
 
+      {/* Indicator Loading */}
       {loading && (
-        <div className="flex items-center justify-center gap-2 py-4 text-sm text-blue-600 font-medium">
-          <Loader2 className="w-5 h-5 animate-spin" /> menganalisis nominal & kategori...
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-center gap-2.5 text-xs text-blue-700 font-semibold mb-4">
+          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+          <span>Gemini AI sedang membaca nominal, toko, & wallet...</span>
         </div>
       )}
 
-      {isScanned && (
-        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm space-y-3">
-          <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Hasil AI Auto-Categorize</p>
+      {/* Form Hasil Scan AI */}
+      {isScanned && !loading && (
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3.5">
+          <div className="flex items-center gap-1.5 text-green-600">
+            <Check className="w-4 h-4" />
+            <p className="text-xs font-bold uppercase tracking-wider">Hasil Ekstraksi AI</p>
+          </div>
 
           <div>
-            <label className="text-xs text-gray-500 font-medium">Potong dari Wallet</label>
+            <label className="text-xs text-gray-500 font-medium">Potong dari Wallet (Rekomendasi AI)</label>
             <select
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
-              className="w-full p-2 border border-gray-200 rounded-lg text-sm text-gray-800 bg-white mt-1"
+              className="w-full p-2.5 border border-blue-200 rounded-xl text-xs font-bold text-blue-800 bg-blue-50/50 mt-1 outline-none focus:ring-2 focus:ring-blue-500"
             >
               {accounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -180,13 +253,12 @@ export default function ScanPage() {
             </select>
           </div>
 
-          {/* Selector Kategori yang dipilih Otomatis oleh AI */}
           <div>
-            <label className="text-xs text-gray-500 font-medium">Kategori Transaksi (Rekomendasi AI)</label>
+            <label className="text-xs text-gray-500 font-medium">Kategori (Rekomendasi AI)</label>
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full p-2 border border-gray-200 rounded-lg text-sm font-semibold text-blue-700 bg-blue-50 mt-1"
+              className="w-full p-2.5 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50/50 mt-1 outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
@@ -197,28 +269,30 @@ export default function ScanPage() {
           </div>
 
           <div>
-            <label className="text-xs text-gray-500">Nama Merchant / Toko</label>
+            <label className="text-xs text-gray-500 font-medium">Nama Merchant / Toko</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full p-2 border border-gray-200 rounded-lg text-sm text-gray-800 mt-1"
+              className="w-full p-2.5 border border-gray-200 rounded-xl text-xs text-gray-800 mt-1 outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Contoh: Indomaret / Kedai Kopi"
             />
           </div>
 
           <div>
-            <label className="text-xs text-gray-500">Total Pengeluaran (Rp)</label>
+            <label className="text-xs text-gray-500 font-medium">Total Pengeluaran (Rp)</label>
             <input
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full p-2 border border-gray-200 rounded-lg font-bold text-base text-gray-800 mt-1"
+              className="w-full p-2.5 border border-gray-200 rounded-xl font-bold text-sm text-gray-800 mt-1 outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0"
             />
           </div>
 
           <button
             onClick={handleSave}
-            className="w-full bg-green-600 text-white font-semibold py-2.5 rounded-lg text-sm hover:bg-green-700 transition shadow"
+            className="w-full bg-green-600 text-white font-semibold py-3 rounded-xl text-xs hover:bg-green-700 transition shadow"
           >
             Simpan Transaksi
           </button>
