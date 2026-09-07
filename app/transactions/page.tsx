@@ -12,6 +12,7 @@ import {
   Filter,
   Search,
   Calendar,
+  FileDown,
 } from 'lucide-react';
 
 export default function TransactionsPage() {
@@ -74,16 +75,18 @@ export default function TransactionsPage() {
     }
   };
 
-  // 📅 Fungsi Pengelompokan Transaksi berdasarkan Tanggal
+  // 🖨️ Fungsi Ekspor PDF / Print View
+  const handleExportPDF = () => {
+    window.print();
+  };
+
   const groupTransactionsByDate = (txList: any[]) => {
     const groups: { [key: string]: { dateLabel: string; items: any[]; totalExpense: number; totalIncome: number } } = {};
 
     txList.forEach((tx) => {
       const dateObj = new Date(tx.transaction_date);
-      // Format Key YYYY-MM-DD untuk urutan
       const dateKey = dateObj.toISOString().split('T')[0];
 
-      // Format Label (contoh: Senin, 1 Sep 2026)
       const dateLabel = dateObj.toLocaleDateString('id-ID', {
         weekday: 'long',
         day: 'numeric',
@@ -110,25 +113,40 @@ export default function TransactionsPage() {
     });
 
     return Object.keys(groups)
-      .sort((a, b) => (a < b ? 1 : -1)) // Urutkan tanggal terbaru paling atas
+      .sort((a, b) => (a < b ? 1 : -1))
       .map((key) => groups[key]);
   };
 
   const groupedData = groupTransactionsByDate(filteredTransactions);
 
   return (
-    <main className="min-h-screen bg-gray-50 max-w-md mx-auto pb-24 p-4 space-y-4">
+    <main className="min-h-screen bg-gray-50 max-w-md mx-auto pb-24 p-4 space-y-4 print:p-0 print:bg-white print:max-w-none">
       {/* Header */}
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-2 print:hidden">
         <Link href="/" className="p-2 hover:bg-gray-200 rounded-full transition">
           <ArrowLeft className="w-5 h-5 text-gray-700" />
         </Link>
         <h1 className="text-lg font-bold text-gray-800">Riwayat Transaksi</h1>
-        <div className="w-5" />
+
+        {/* 📄 Tombol Ekspor PDF */}
+        <button
+          onClick={handleExportPDF}
+          className="p-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-100 transition flex items-center gap-1 text-xs font-semibold"
+          title="Ekspor PDF"
+        >
+          <FileDown className="w-4 h-4" />
+          <span>PDF</span>
+        </button>
+      </div>
+
+      {/* Tampilan Cetak Khusus PDF */}
+      <div className="hidden print:block mb-4 border-b pb-2">
+        <h1 className="text-xl font-bold text-gray-900">Laporan Riwayat Transaksi</h1>
+        <p className="text-xs text-gray-500">MyMoney Personal Finance App</p>
       </div>
 
       {/* Input Pencarian */}
-      <div className="relative">
+      <div className="relative print:hidden">
         <Search className="w-4 h-4 absolute left-3 top-3.5 text-gray-400" />
         <input
           type="text"
@@ -140,7 +158,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex bg-gray-200 p-1 rounded-xl gap-1 text-xs font-semibold">
+      <div className="flex bg-gray-200 p-1 rounded-xl gap-1 text-xs font-semibold print:hidden">
         <button
           onClick={() => setFilterType('all')}
           className={`flex-1 py-1.5 rounded-lg transition ${
@@ -179,10 +197,9 @@ export default function TransactionsPage() {
         <div className="space-y-4">
           {groupedData.map((group, idx) => (
             <div key={idx} className="space-y-2">
-              {/* Header Tanggal & Subtotal Harian */}
               <div className="flex items-center justify-between px-1 text-[11px] text-gray-500 font-semibold border-b border-gray-200 pb-1">
                 <span className="flex items-center gap-1.5 text-gray-700">
-                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                  <Calendar className="w-3.5 h-3.5 text-gray-400 print:hidden" />
                   {group.dateLabel}
                 </span>
                 <div className="flex items-center gap-2">
@@ -199,16 +216,15 @@ export default function TransactionsPage() {
                 </div>
               </div>
 
-              {/* Items Transaksi di Hari Tersebut */}
               <div className="space-y-2">
                 {group.items.map((tx) => (
                   <div
                     key={tx.id}
-                    className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between"
+                    className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between print:border-gray-300"
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`p-2.5 rounded-xl ${
+                        className={`p-2.5 rounded-xl print:hidden ${
                           tx.type === 'expense'
                             ? 'bg-red-50 text-red-500'
                             : 'bg-green-50 text-green-600'
@@ -242,7 +258,7 @@ export default function TransactionsPage() {
                       </p>
                       <button
                         onClick={() => handleDelete(tx.id)}
-                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition print:hidden"
                         title="Hapus Transaksi"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -256,7 +272,9 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      <BottomNav />
+      <div className="print:hidden">
+        <BottomNav />
+      </div>
     </main>
   );
 }
