@@ -7,6 +7,7 @@ import Link from 'next/link';
 import {
   TrendingUp,
   TrendingDown,
+  ArrowRightLeft,
   Scan,
   PlusCircle,
   ArrowUpRight,
@@ -33,7 +34,7 @@ export default function HomePage() {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [greeting, setGreeting] = useState('Selamat Datang');
   const [showDevModal, setShowDevModal] = useState(false);
 
@@ -42,15 +43,13 @@ export default function HomePage() {
     updateGreeting();
   }, []);
 
-  // 🔒 Lock background scroll saat modal popup developer terbuka
+  // Lock scroll background saat modal developer terbuka
   useEffect(() => {
     if (showDevModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
     }
-
-    // Cleanup style saat komponen unmount
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -96,6 +95,7 @@ export default function HomePage() {
       let income = 0;
       let expense = 0;
 
+      // Filter: Hanya hitung income & expense murni (abaikan transfer)
       currentMonthTx.forEach((t) => {
         if (t.type === 'income') income += Number(t.amount);
         if (t.type === 'expense') expense += Number(t.amount);
@@ -164,7 +164,7 @@ export default function HomePage() {
                 <ArrowDownRight className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-[10px] text-blue-100 font-medium">Pemasukan M-ini</p>
+                <p className="text-[10px] text-blue-100 font-medium">Pemasukan</p>
                 <p className="text-sm font-bold text-green-300">
                   +Rp {monthlyIncome.toLocaleString('id-ID')}
                 </p>
@@ -176,7 +176,7 @@ export default function HomePage() {
                 <ArrowUpRight className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-[10px] text-blue-100 font-medium">Pengeluaran M-ini</p>
+                <p className="text-[10px] text-blue-100 font-medium">Pengeluaran</p>
                 <p className="text-sm font-bold text-red-300">
                   -Rp {monthlyExpense.toLocaleString('id-ID')}
                 </p>
@@ -186,7 +186,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Quick Action Buttons */}
+      {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-3">
         <Link
           href="/add"
@@ -295,17 +295,22 @@ export default function HomePage() {
                 className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between hover:bg-slate-50 transition block"
               >
                 <div className="flex items-center gap-3">
+                  {/* Icon Tipe Transaksi */}
                   <div
                     className={`p-2.5 rounded-xl ${
                       tx.type === 'expense'
                         ? 'bg-red-50 text-red-500'
-                        : 'bg-green-50 text-green-600'
+                        : tx.type === 'income'
+                        ? 'bg-green-50 text-green-600'
+                        : 'bg-blue-50 text-blue-600'
                     }`}
                   >
                     {tx.type === 'expense' ? (
                       <TrendingDown className="w-4 h-4" />
-                    ) : (
+                    ) : tx.type === 'income' ? (
                       <TrendingUp className="w-4 h-4" />
+                    ) : (
+                      <ArrowRightLeft className="w-4 h-4" />
                     )}
                   </div>
                   <div>
@@ -322,12 +327,17 @@ export default function HomePage() {
                   </div>
                 </div>
 
+                {/* Nominal khusus Transfer */}
                 <p
                   className={`font-bold text-xs ${
-                    tx.type === 'expense' ? 'text-red-500' : 'text-green-600'
+                    tx.type === 'expense'
+                      ? 'text-red-500'
+                      : tx.type === 'income'
+                      ? 'text-green-600'
+                      : 'text-gray-700'
                   }`}
                 >
-                  {tx.type === 'expense' ? '-' : '+'}Rp{' '}
+                  {tx.type === 'expense' ? '-Rp ' : tx.type === 'income' ? '+Rp ' : 'Rp '}
                   {Number(tx.amount).toLocaleString('id-ID')}
                 </p>
               </Link>
@@ -336,7 +346,7 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Modal Popup Developer Info (Dengan Prevention Touch & Scroll Lock) */}
+      {/* Modal Dev Info */}
       {showDevModal && (
         <div
           onClick={() => setShowDevModal(false)}
@@ -367,7 +377,7 @@ export default function HomePage() {
             <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-left space-y-2 text-xs">
               <div className="flex justify-between border-b pb-1.5">
                 <span className="text-gray-400">Pengembang</span>
-                <span className="font-semibold text-gray-700">RZQ</span>
+                <span className="font-semibold text-gray-700">Developer MyMoney</span>
               </div>
               <div className="flex justify-between border-b pb-1.5">
                 <span className="text-gray-400">Tech Stack</span>
@@ -381,10 +391,6 @@ export default function HomePage() {
                 <span className="text-gray-400">Versi Aplikasi</span>
                 <span className="font-semibold text-gray-700">v1.2.0 (PWA)</span>
               </div>
-            </div>
-
-            <div className="text-[11px] text-gray-500 bg-blue-50/50 p-2.5 rounded-lg border border-blue-100 text-left">
-              💡 Aplikasi ini dilengkapi pemindaian AI otomatis untuk struk belanja/screenshot M-Banking serta pengelolaan multi-wallet real-time.
             </div>
 
             <button

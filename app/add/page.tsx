@@ -4,158 +4,162 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../Lib/Supabase';
 import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
+import { ArrowLeft, Check } from 'lucide-react';
+import Link from 'next/link';
 
 export default function AddTransactionPage() {
   const router = useRouter();
-
-  // State Nominal & Formatting
-  const [displayAmount, setDisplayAmount] = useState('');
-  const [rawAmount, setRawAmount] = useState<number>(0);
-
-  // Mode: expense, income, atau transfer
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
+  const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [toAccountId, setToAccountId] = useState(''); // Khusus Transfer
+  const [fromAccountId, setFromAccountId] = useState('');
+  const [toAccountId, setToAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [transactionDate, setTransactionDate] = useState(
     new Date().toISOString().split('T')[0]
   );
 
-  useEffect(() => {
-    fetchOptions();
-  }, [type]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchOptions = async () => {
+  useEffect(() => {
+    fetchFormData();
+  }, []);
+
+  const fetchFormData = async () => {
     const { data: accData } = await supabase.from('accounts').select('*');
     if (accData && accData.length > 0) {
       setAccounts(accData);
-      setAccountId(accData[0].id);
-      if (accData.length > 1) setToAccountId(accData[1].id);
-    }
-
-    if (type !== 'transfer') {
-      const { data: catData } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('type', type);
-      if (catData && catData.length > 0) {
-        setCategories(catData);
-        setCategoryId(catData[0].id);
+      setFromAccountId(accData[0].id);
+      if (accData.length > 1) {
+        setToAccountId(accData[1].id);
       }
     }
-  };
 
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    const cleanNumber = value.replace(/\D/g, '');
-
-    if (cleanNumber === '') {
-      setDisplayAmount('');
-      setRawAmount(0);
-    } else {
-      const num = parseInt(cleanNumber, 10);
-      setRawAmount(num);
-      setDisplayAmount(new Intl.NumberFormat('id-ID').format(num));
+    const { data: catData } = await supabase.from('categories').select('*');
+    if (catData) {
+      setCategories(catData);
+      const defaultExpenseCat = catData.find((c) => c.type === 'expense');
+      if (defaultExpenseCat) setCategoryId(defaultExpenseCat.id);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!rawAmount || rawAmount <= 0 || !accountId) {
-      alert('Mohon lengkapi nominal dan wallet!');
+    if (!amount || parseFloat(amount) <= 0) {
+      alert('Masukkan nominal transaksi yang valid!');
       return;
     }
 
-    if (type === 'transfer' && accountId === toAccountId) {
-      alert('Wallet asal dan wallet tujuan tidak boleh sama!');
-      return;
-    }
+    setIsSubmitting(true);
+    const parsedAmount = parseFloat(amount);
 
-    setLoading(true);
+    try {
+      // 🔄 LOGIKA KHUSUS TAB TRANSFER
+      if (type === 'transfer') {
+        if (!fromAccountId || !toAccountId) {
+          alert('Pilih wallet asal dan wallet tujuan!');
+          setIsSubmitting(false);
+          return;
+        }
+        if (fromAccountId === toAccountId) {
+          alert('Wallet asal dan tujuan tidak boleh sama!');
+          setIsSubmitting(false);
+          return;
+        }
 
-    const now = new Date();
-    const formattedDate = new Date(
-      `${transactionDate}T${now.toTimeString().split(' ')[0]}`
-    ).toISOString();
+        const fromAcc = accounts.find((a) => a.id === fromAccountId);
+        const toAcc = accounts.find((a) => a.id === toAccountId);
 
-    if (type === 'transfer') {
-      // 🔄 PROSES TRANSFER (Input 2 transaksi sekaligus)
-      const fromAcc = accounts.find((a) => a.id === accountId)?.account_name || 'Wallet';
-      const toAcc = accounts.find((a) => a.id === toAccountId)?.account_name || 'Wallet';
+        // Cari ID kategori Transfer dari DB jika ada
+        const transferCat = categories.find(
+          (c) => c.type === 'transfer' || c.name.toLowerCase().includes('transfer')
+        );
 
-      const transferNotes = description ? ` (${description})` : '';
+        // 1. Kurangi Saldo Wallet Asal
+        await supabase
+          .from('accounts')
+          .update({ balance: (Number(fromAcc.balance) || 0) - parsedAmount })
+          .eq('id', fromAccountId);
 
-      const { error } = await supabase.from('transactions').insert([
-        {
-          account_id: accountId,
-          amount: rawAmount,
-          type: 'expense',
-          description: `Transfer ke ${toAcc}${transferNotes}`,
-          transaction_date: formattedDate,
-        },
-        {
-          account_id: toAccountId,
-          amount: rawAmount,
-          type: 'income',
-          description: `Transfer dari ${fromAcc}${transferNotes}`,
-          transaction_date: formattedDate,
-        },
-      ]);
+        // 2. Tambah Saldo Wallet Tujuan
+        await supabase
+          .from('accounts')
+          .update({ balance: (Number(toAcc.balance) || 0) + parsedAmount })
+          .eq('id', toAccountId);
 
-      setLoading(false);
+        // 3. Simpan Cuma 1 Baris Transaksi dengan type = 'transfer' (Bukan expense / income!)
+        const { error } = await supabase.from('transactions').insert([
+          {
+            account_id: fromAccountId,
+            category_id: transferCat ? transferCat.id : null,
+            amount: parsedAmount,
+            type: 'transfer', // 👈 Ditegaskan tipe data murni 'transfer'
+            description: description
+              ? `Transfer ke ${toAcc?.account_name} (${description})`
+              : `Transfer ke ${toAcc?.account_name}`,
+            transaction_date: new Date(transactionDate).toISOString(),
+          },
+        ]);
 
-      if (error) {
-        alert('Gagal melakukan transfer: ' + error.message);
-      } else {
-        alert('Transfer antar wallet berhasil!');
-        router.push('/');
+        if (error) throw error;
+      } 
+      // 🔴 / 🟢 LOGIKA PENGELUARAN ATAU PEMASUKAN BIASA
+      else {
+        const selectedAcc = accounts.find((a) => a.id === fromAccountId);
+        const currentBalance = Number(selectedAcc?.balance) || 0;
+        const newBalance =
+          type === 'expense' ? currentBalance - parsedAmount : currentBalance + parsedAmount;
+
+        // Update Saldo Wallet
+        await supabase
+          .from('accounts')
+          .update({ balance: newBalance })
+          .eq('id', fromAccountId);
+
+        // Insert Transaksi (expense / income)
+        const { error } = await supabase.from('transactions').insert([
+          {
+            account_id: fromAccountId,
+            category_id: categoryId || null,
+            amount: parsedAmount,
+            type: type, // 'expense' atau 'income'
+            description: description,
+            transaction_date: new Date(transactionDate).toISOString(),
+          },
+        ]);
+
+        if (error) throw error;
       }
-    } else {
-      // 💸 PROSES PENGELUARAN / PEMASUKAN BIASA
-      if (!categoryId) {
-        alert('Mohon pilih kategori!');
-        setLoading(false);
-        return;
-      }
 
-      const { error } = await supabase.from('transactions').insert([
-        {
-          account_id: accountId,
-          category_id: categoryId,
-          amount: rawAmount,
-          type: type,
-          description: description,
-          transaction_date: formattedDate,
-        },
-      ]);
-
-      setLoading(false);
-
-      if (error) {
-        alert('Gagal menyimpan transaksi: ' + error.message);
-      } else {
-        router.push('/');
-      }
+      router.push('/');
+    } catch (err: any) {
+      alert('Gagal menyimpan transaksi: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="p-4 max-w-md mx-auto pb-24 min-h-screen bg-gray-50">
-      <h1 className="text-xl font-bold mb-4 text-gray-800">Catat Transaksi</h1>
+    <main className="min-h-screen bg-gray-50 p-4 max-w-md mx-auto pb-24">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5 pt-2">
+        <Link href="/" className="p-2 hover:bg-gray-200 rounded-full transition">
+          <ArrowLeft className="w-5 h-5 text-gray-700" />
+        </Link>
+        <h1 className="text-lg font-bold text-gray-800">Catat Transaksi</h1>
+        <div className="w-5" />
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Toggle Expense / Income / Transfer */}
-        <div className="flex bg-gray-200 p-1 rounded-lg">
+        {/* Switcher Tipe Transaksi */}
+        <div className="flex bg-gray-200 p-1 rounded-xl gap-1 text-xs font-semibold">
           <button
             type="button"
             onClick={() => setType('expense')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-md transition ${
-              type === 'expense' ? 'bg-red-500 text-white shadow' : 'text-gray-600'
+            className={`flex-1 py-2 rounded-lg transition ${
+              type === 'expense' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500'
             }`}
           >
             Pengeluaran
@@ -163,8 +167,8 @@ export default function AddTransactionPage() {
           <button
             type="button"
             onClick={() => setType('income')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-md transition ${
-              type === 'income' ? 'bg-green-500 text-white shadow' : 'text-gray-600'
+            className={`flex-1 py-2 rounded-lg transition ${
+              type === 'income' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500'
             }`}
           >
             Pemasukan
@@ -172,41 +176,39 @@ export default function AddTransactionPage() {
           <button
             type="button"
             onClick={() => setType('transfer')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-md transition ${
-              type === 'transfer' ? 'bg-blue-600 text-white shadow' : 'text-gray-600'
+            className={`flex-1 py-2 rounded-lg transition ${
+              type === 'transfer' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500'
             }`}
           >
             Transfer
           </button>
         </div>
 
-        {/* Nominal Formatted Input */}
-        <div>
+        {/* Input Nominal */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <label className="text-xs text-gray-500 font-medium">Nominal Transaksi</label>
-          <div className="relative flex items-center mt-1">
-            <span className="absolute left-3 text-xl font-bold text-gray-400">Rp</span>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-lg font-bold text-gray-500">Rp</span>
             <input
-              type="text"
-              inputMode="numeric"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
               placeholder="0"
-              value={displayAmount}
-              onChange={handleAmountChange}
-              className="w-full text-2xl font-bold pl-11 pr-3 py-3 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-xl font-bold text-gray-800 outline-none"
               required
             />
           </div>
         </div>
 
-        {/* Form Pilihan Wallet */}
+        {/* Form Pilihan Wallet (Dinamis jika pilih Transfer) */}
         {type === 'transfer' ? (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-xs text-gray-500 font-medium">Dari Wallet (Asal)</label>
               <select
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm text-gray-800 mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
-                required
+                value={fromAccountId}
+                onChange={(e) => setFromAccountId(e.target.value)}
+                className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 outline-none mt-1"
               >
                 {accounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
@@ -220,8 +222,7 @@ export default function AddTransactionPage() {
               <select
                 value={toAccountId}
                 onChange={(e) => setToAccountId(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm text-gray-800 mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
-                required
+                className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 outline-none mt-1"
               >
                 {accounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
@@ -232,90 +233,74 @@ export default function AddTransactionPage() {
             </div>
           </div>
         ) : (
-          <div>
-            <label className="text-xs text-gray-500 font-medium">Sumber Akun / Wallet</label>
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm text-gray-800 mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
-              required
-            >
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.account_name} ({acc.account_type.toUpperCase()})
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500 font-medium">Pilih Wallet</label>
+              <select
+                value={fromAccountId}
+                onChange={(e) => setFromAccountId(e.target.value)}
+                className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 outline-none mt-1"
+              >
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.account_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium">Kategori</label>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 outline-none mt-1"
+              >
+                {categories
+                  .filter((c) => c.type === type)
+                  .map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
           </div>
         )}
 
-        {/* Kategori (Sembunyikan jika mode Transfer) */}
-        {type !== 'transfer' && (
+        {/* Input Keterangan & Tanggal */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3">
           <div>
-            <label className="text-xs text-gray-500 font-medium">Kategori</label>
-            <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm text-gray-800 mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
-              required
-            >
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+            <label className="text-xs text-gray-500 font-medium">Keterangan / Catatan</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="contoh: Pindah dana mingguan"
+              className="w-full p-2.5 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none mt-1"
+            />
           </div>
-        )}
-
-        {/* Keterangan */}
-        <div>
-          <label className="text-xs text-gray-500 font-medium">Keterangan / Catatan</label>
-          <input
-            type="text"
-            placeholder={
-              type === 'transfer'
-                ? 'contoh: Tarik tunai di ATM / Topup Gopay'
-                : 'contoh: Kopi Kenangan / Nasi Goreng'
-            }
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
-          />
-        </div>
-
-        {/* Tanggal Transaksi */}
-        <div>
-          <label className="text-xs text-gray-500 font-medium">Tanggal Transaksi</label>
-          <input
-            type="date"
-            value={transactionDate}
-            onChange={(e) => setTransactionDate(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
-            required
-          />
+          <div>
+            <label className="text-xs text-gray-500 font-medium">Tanggal Transaksi</label>
+            <input
+              type="date"
+              value={transactionDate}
+              onChange={(e) => setTransactionDate(e.target.value)}
+              className="w-full p-2.5 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none mt-1"
+            />
+          </div>
         </div>
 
         <button
           type="submit"
-          disabled={loading}
-          className={`w-full font-semibold py-3 rounded-lg text-white transition ${
-            type === 'transfer'
-              ? 'bg-blue-600 hover:bg-blue-700'
-              : type === 'expense'
-              ? 'bg-red-600 hover:bg-red-700'
-              : 'bg-green-600 hover:bg-green-700'
-          }`}
+          disabled={isSubmitting}
+          className="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl text-xs hover:bg-blue-700 transition flex items-center justify-center gap-1.5 shadow"
         >
-          {loading
-            ? 'Menyimpan...'
-            : type === 'transfer'
-            ? 'Proses Transfer'
-            : 'Simpan Transaksi'}
+          <Check className="w-4 h-4" />
+          <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Transaksi'}</span>
         </button>
       </form>
 
       <BottomNav />
-    </div>
+    </main>
   );
 }
