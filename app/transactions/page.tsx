@@ -13,6 +13,9 @@ import {
   Search,
   Calendar,
   FileDown,
+  X,
+  Printer,
+  Eye,
 } from 'lucide-react';
 
 export default function TransactionsPage() {
@@ -22,6 +25,12 @@ export default function TransactionsPage() {
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'income'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // 📄 State Modal PDF & Filter Tanggal Ekspor
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [pdfTransactions, setPdfTransactions] = useState<any[]>([]);
+
   useEffect(() => {
     fetchTransactions();
   }, []);
@@ -29,6 +38,18 @@ export default function TransactionsPage() {
   useEffect(() => {
     applyFilter();
   }, [filterType, searchQuery, transactions]);
+
+  // Lock Scroll saat Modal PDF terbuka
+  useEffect(() => {
+    if (showPdfModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showPdfModal]);
 
   const fetchTransactions = async () => {
     setLoading(true);
@@ -75,10 +96,43 @@ export default function TransactionsPage() {
     }
   };
 
-  // 🖨️ Fungsi Ekspor PDF / Print View
-  const handleExportPDF = () => {
-    window.print();
+  // 🛠️ Buka Modal PDF & Set Default Rentang Tanggal (Bulan Ini)
+  const handleOpenPdfModal = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const lastDay = new Date().toISOString().split('T')[0];
+
+    setStartDate(firstDay);
+    setEndDate(lastDay);
+    filterPdfData(firstDay, lastDay);
+    setShowPdfModal(true);
   };
+
+  // 🔍 Filter Data Transaksi Khusus PDF Berdasarkan Rentang Tanggal
+  const filterPdfData = (start: string, end: string) => {
+    if (!start || !end) {
+      setPdfTransactions(transactions);
+      return;
+    }
+
+    const filtered = transactions.filter((t) => {
+      const txDate = new Date(t.transaction_date).toISOString().split('T')[0];
+      return txDate >= start && txDate <= end;
+    });
+
+    setPdfTransactions(filtered);
+  };
+
+  // Hitung Total Pemasukan & Pengeluaran untuk Preview PDF
+  const pdfTotalIncome = pdfTransactions
+    .filter((t) => t.type === 'income')
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const pdfTotalExpense = pdfTransactions
+    .filter((t) => t.type === 'expense')
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const pdfNetCashflow = pdfTotalIncome - pdfTotalExpense;
 
   const groupTransactionsByDate = (txList: any[]) => {
     const groups: { [key: string]: { dateLabel: string; items: any[]; totalExpense: number; totalIncome: number } } = {};
@@ -128,21 +182,15 @@ export default function TransactionsPage() {
         </Link>
         <h1 className="text-lg font-bold text-gray-800">Riwayat Transaksi</h1>
 
-        {/* 📄 Tombol Ekspor PDF */}
+        {/* 📄 Tombol Ekspor PDF (Membuka Modal Filter) */}
         <button
-          onClick={handleExportPDF}
+          onClick={handleOpenPdfModal}
           className="p-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-100 transition flex items-center gap-1 text-xs font-semibold"
           title="Ekspor PDF"
         >
           <FileDown className="w-4 h-4" />
-          <span>PDF</span>
+          <span>Ekspor</span>
         </button>
-      </div>
-
-      {/* Tampilan Cetak Khusus PDF */}
-      <div className="hidden print:block mb-4 border-b pb-2">
-        <h1 className="text-xl font-bold text-gray-900">Laporan Riwayat Transaksi</h1>
-        <p className="text-xs text-gray-500">MyMoney Personal Finance App</p>
       </div>
 
       {/* Input Pencarian */}
@@ -185,92 +233,290 @@ export default function TransactionsPage() {
         </button>
       </div>
 
-      {/* Daftar Transaksi Grouped */}
-      {loading ? (
-        <p className="text-xs text-center py-8 text-gray-400">Memuat riwayat transaksi...</p>
-      ) : groupedData.length === 0 ? (
-        <div className="bg-white p-8 rounded-2xl border text-center text-gray-400 space-y-2">
-          <Filter className="w-8 h-8 mx-auto text-gray-300" />
-          <p className="text-xs">Tidak ada transaksi yang ditemukan</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {groupedData.map((group, idx) => (
-            <div key={idx} className="space-y-2">
-              <div className="flex items-center justify-between px-1 text-[11px] text-gray-500 font-semibold border-b border-gray-200 pb-1">
-                <span className="flex items-center gap-1.5 text-gray-700">
-                  <Calendar className="w-3.5 h-3.5 text-gray-400 print:hidden" />
-                  {group.dateLabel}
+      {/* Daftar Transaksi Grouped (Tampilan Aplikasi) */}
+      <div className="print:hidden">
+        {loading ? (
+          <p className="text-xs text-center py-8 text-gray-400">Memuat riwayat transaksi...</p>
+        ) : groupedData.length === 0 ? (
+          <div className="bg-white p-8 rounded-2xl border text-center text-gray-400 space-y-2">
+            <Filter className="w-8 h-8 mx-auto text-gray-300" />
+            <p className="text-xs">Tidak ada transaksi yang ditemukan</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {groupedData.map((group, idx) => (
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center justify-between px-1 text-[11px] text-gray-500 font-semibold border-b border-gray-200 pb-1">
+                  <span className="flex items-center gap-1.5 text-gray-700">
+                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                    {group.dateLabel}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {group.totalExpense > 0 && (
+                      <span className="text-red-500 font-bold">
+                        -Rp {group.totalExpense.toLocaleString('id-ID')}
+                      </span>
+                    )}
+                    {group.totalIncome > 0 && (
+                      <span className="text-green-600 font-bold">
+                        +Rp {group.totalIncome.toLocaleString('id-ID')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {group.items.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`p-2.5 rounded-xl ${
+                            tx.type === 'expense'
+                              ? 'bg-red-50 text-red-500'
+                              : 'bg-green-50 text-green-600'
+                          }`}
+                        >
+                          {tx.type === 'expense' ? (
+                            <TrendingDown className="w-4 h-4" />
+                          ) : (
+                            <TrendingUp className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-xs text-gray-800">
+                            {tx.description || tx.categories?.name || 'Transaksi'}
+                          </h4>
+                          <p className="text-[10px] text-gray-400">
+                            {tx.accounts?.account_name || 'Wallet'}
+                            {tx.categories?.name ? ` • ${tx.categories.name}` : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <p
+                          className={`font-bold text-xs ${
+                            tx.type === 'expense' ? 'text-red-500' : 'text-green-600'
+                          }`}
+                        >
+                          {tx.type === 'expense' ? '-' : '+'}Rp{' '}
+                          {Number(tx.amount).toLocaleString('id-ID')}
+                        </p>
+                        <button
+                          onClick={() => handleDelete(tx.id)}
+                          className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                          title="Hapus Transaksi"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 🖼️ MODAL PREVIEW & FILTER TANGGAL EKSPOR PDF */}
+      {showPdfModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-2xl p-5 shadow-2xl max-h-[90vh] flex flex-col space-y-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h3 className="font-bold text-base text-gray-800 flex items-center gap-1.5">
+                  <FileDown className="w-5 h-5 text-blue-600" /> Ekspor Laporan PDF
+                </h3>
+                <p className="text-xs text-gray-400">Pilih rentang tanggal dan cek preview laporan</p>
+              </div>
+              <button
+                onClick={() => setShowPdfModal(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Filter Tanggal */}
+            <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
+              <div>
+                <label className="text-[11px] font-semibold text-gray-600">Dari Tanggal</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    filterPdfData(e.target.value, endDate);
+                  }}
+                  className="w-full p-2 mt-1 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-gray-600">Sampai Tanggal</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    filterPdfData(startDate, e.target.value);
+                  }}
+                  className="w-full p-2 mt-1 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Container Preview Document */}
+            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-xl p-4 bg-slate-50 space-y-4 shadow-inner">
+              <div className="flex items-center justify-between text-xs text-gray-400 border-b pb-2">
+                <span className="font-semibold text-blue-600 flex items-center gap-1">
+                  <Eye className="w-3.5 h-3.5" /> Preview Laporan
                 </span>
-                <div className="flex items-center gap-2">
-                  {group.totalExpense > 0 && (
-                    <span className="text-red-500 font-bold">
-                      -Rp {group.totalExpense.toLocaleString('id-ID')}
-                    </span>
-                  )}
-                  {group.totalIncome > 0 && (
-                    <span className="text-green-600 font-bold">
-                      +Rp {group.totalIncome.toLocaleString('id-ID')}
-                    </span>
-                  )}
+                <span>{pdfTransactions.length} Transaksi Ditemukan</span>
+              </div>
+
+              {/* Ringkasan Laporan */}
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="bg-green-50 p-2.5 rounded-lg border border-green-100">
+                  <p className="text-[10px] text-green-600 font-bold uppercase">Pemasukan</p>
+                  <p className="font-extrabold text-green-700 mt-0.5">
+                    +Rp {pdfTotalIncome.toLocaleString('id-ID')}
+                  </p>
+                </div>
+                <div className="bg-red-50 p-2.5 rounded-lg border border-red-100">
+                  <p className="text-[10px] text-red-600 font-bold uppercase">Pengeluaran</p>
+                  <p className="font-extrabold text-red-700 mt-0.5">
+                    -Rp {pdfTotalExpense.toLocaleString('id-ID')}
+                  </p>
+                </div>
+                <div className="bg-blue-50 p-2.5 rounded-lg border border-blue-100">
+                  <p className="text-[10px] text-blue-600 font-bold uppercase">Arus Kas</p>
+                  <p className={`font-extrabold mt-0.5 ${pdfNetCashflow >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                    Rp {pdfNetCashflow.toLocaleString('id-ID')}
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                {group.items.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between print:border-gray-300"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`p-2.5 rounded-xl print:hidden ${
-                          tx.type === 'expense'
-                            ? 'bg-red-50 text-red-500'
-                            : 'bg-green-50 text-green-600'
-                        }`}
-                      >
-                        {tx.type === 'expense' ? (
-                          <TrendingDown className="w-4 h-4" />
-                        ) : (
-                          <TrendingUp className="w-4 h-4" />
-                        )}
-                      </div>
+              {/* Tabel Mini Preview */}
+              {pdfTransactions.length === 0 ? (
+                <p className="text-xs text-center text-gray-400 py-6">
+                  Tidak ada transaksi pada rentang tanggal ini.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {pdfTransactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="bg-white p-2.5 rounded-lg border border-gray-200 text-xs flex items-center justify-between"
+                    >
                       <div>
-                        <h4 className="font-semibold text-xs text-gray-800">
-                          {tx.description || tx.categories?.name || 'Transaksi'}
-                        </h4>
+                        <p className="font-semibold text-gray-800">{tx.description || tx.categories?.name || 'Transaksi'}</p>
                         <p className="text-[10px] text-gray-400">
-                          {tx.accounts?.account_name || 'Wallet'}
-                          {tx.categories?.name ? ` • ${tx.categories.name}` : ''}
+                          {new Date(tx.transaction_date).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                          })}{' '}
+                          • {tx.accounts?.account_name}
                         </p>
                       </div>
+                      <span className={`font-bold ${tx.type === 'expense' ? 'text-red-500' : 'text-green-600'}`}>
+                        {tx.type === 'expense' ? '-' : '+'}Rp {Number(tx.amount).toLocaleString('id-ID')}
+                      </span>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <p
-                        className={`font-bold text-xs ${
-                          tx.type === 'expense' ? 'text-red-500' : 'text-green-600'
-                        }`}
-                      >
-                        {tx.type === 'expense' ? '-' : '+'}Rp{' '}
-                        {Number(tx.amount).toLocaleString('id-ID')}
-                      </p>
-                      <button
-                        onClick={() => handleDelete(tx.id)}
-                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition print:hidden"
-                        title="Hapus Transaksi"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
+
+            {/* Actions Footer */}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowPdfModal(false)}
+                className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-xs font-semibold hover:bg-gray-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={pdfTransactions.length === 0}
+                onClick={() => {
+                  setShowPdfModal(false);
+                  setTimeout(() => {
+                    window.print();
+                  }, 300);
+                }}
+                className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 flex items-center justify-center gap-1.5 shadow disabled:opacity-50"
+              >
+                <Printer className="w-4 h-4" /> Cetak / Save PDF
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* 🖨️ TABEL KHUSUS CETAK PDF (Hanya Muncul Saat window.print()) */}
+      <div className="hidden print:block space-y-4">
+        <div className="border-b pb-3">
+          <h1 className="text-xl font-bold text-gray-900">Laporan Riwayat Transaksi</h1>
+          <p className="text-xs text-gray-500">
+            Periode: {startDate ? new Date(startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Awal'} s/d{' '}
+            {endDate ? new Date(endDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Hari Ini'}
+          </p>
+        </div>
+
+        {/* Ringkasan Cetak */}
+        <div className="grid grid-cols-3 gap-3 border p-3 rounded-lg text-xs mb-4">
+          <div>
+            <p className="text-gray-500 uppercase font-bold text-[9px]">Total Pemasukan</p>
+            <p className="font-bold text-green-600 text-sm">+Rp {pdfTotalIncome.toLocaleString('id-ID')}</p>
+          </div>
+          <div>
+            <p className="text-gray-500 uppercase font-bold text-[9px]">Total Pengeluaran</p>
+            <p className="font-bold text-red-600 text-sm">-Rp {pdfTotalExpense.toLocaleString('id-ID')}</p>
+          </div>
+          <div>
+            <p className="text-gray-500 uppercase font-bold text-[9px]">Arus Kas Bersih</p>
+            <p className="font-bold text-blue-600 text-sm">Rp {pdfNetCashflow.toLocaleString('id-ID')}</p>
+          </div>
+        </div>
+
+        {/* Tabel Rapi */}
+        <table className="w-full text-left text-xs border-collapse border border-gray-300">
+          <thead>
+            <tr className="bg-gray-100 border-b border-gray-300">
+              <th className="p-2 border-r">Tanggal</th>
+              <th className="p-2 border-r">Deskripsi / Merchant</th>
+              <th className="p-2 border-r">Wallet</th>
+              <th className="p-2 border-r">Kategori</th>
+              <th className="p-2 text-right">Nominal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pdfTransactions.map((tx) => (
+              <tr key={tx.id} className="border-b border-gray-200">
+                <td className="p-2 border-r">
+                  {new Date(tx.transaction_date).toLocaleDateString('id-ID', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </td>
+                <td className="p-2 border-r font-medium">{tx.description || '-'}</td>
+                <td className="p-2 border-r">{tx.accounts?.account_name || '-'}</td>
+                <td className="p-2 border-r">{tx.categories?.name || '-'}</td>
+                <td className={`p-2 text-right font-bold ${tx.type === 'expense' ? 'text-red-600' : 'text-green-600'}`}>
+                  {tx.type === 'expense' ? '-' : '+'}Rp {Number(tx.amount).toLocaleString('id-ID')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <div className="print:hidden">
         <BottomNav />
